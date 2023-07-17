@@ -1,15 +1,14 @@
 import sys
-import os
-import csv
 import pandas as pd
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QProgressBar, QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar, QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox, QGridLayout, QScrollArea, QComboBox
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
-# CSV Data Loader
 class DataLoader(QThread):
-    progress_signal = pyqtSignal(int)  # Signal for the progress bar
-    df_signal = pyqtSignal(pd.DataFrame)  # Signal for the DataFrame
-    error_occurred = pyqtSignal(str)  # Signal for error handling
+    progress_signal = pyqtSignal(int)
+    df_signal = pyqtSignal(pd.DataFrame)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, file_name):
         super().__init__()
@@ -17,12 +16,8 @@ class DataLoader(QThread):
 
     def run(self):
         try:
-            count = 0
-            chunks = pd.read_csv(self.file_name, chunksize=50000)
-            for chunk in chunks:
-                self.df_signal.emit(chunk)
-                count += 1
-                self.progress_signal.emit(count*10)
+            df = pd.read_csv(self.file_name)
+            self.df_signal.emit(df)
         except FileNotFoundError:
             self.error_occurred.emit("File not found.")
         except pd.errors.EmptyDataError:
@@ -32,68 +27,97 @@ class DataLoader(QThread):
         except Exception as e:
             self.error_occurred.emit(str(e))
 
-# Application Demo
 class AppDemo(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Advanced CSV Analyzer")
-        self.resize(1000, 600)
-
-        mainLayout = QVBoxLayout()
+        self.resize(1200, 800)
         
-        self.progressBar = QProgressBar()
-        mainLayout.addWidget(self.progressBar)
+        self.gridLayout = QGridLayout()
+        
+        self.postProcessingButton = QPushButton('Postprocessing')
+        self.postProcessingButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.postProcessingButton, 0, 0)
 
-        self.statusLabel = QLabel('Select a CSV file to start analysis...')
-        mainLayout.addWidget(self.statusLabel)
+        self.IPTButton = QPushButton('IPT Operating Range 0 - 5000 rpm')
+        self.IPTButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.IPTButton, 0, 1)
 
-        btn = QPushButton('Load CSV Data')
-        btn.clicked.connect(self.loadCSV)
-        mainLayout.addWidget(btn)
+        self.HPTButton = QPushButton('HPT Operating Range 0 - 12000 rpm')
+        self.HPTButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.HPTButton, 0, 2)
 
-        self.tableWidget = QTableWidget(0, 4)
-        self.tableWidget.setHorizontalHeaderLabels(('RPM', 'CM-FF', 'CM-TCF', 'CM-TRF'))  # Add headers as needed
-        self.tableWidget.horizontalHeader().setStretchLastSection(True)
-        self.tableWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
-        mainLayout.addWidget(self.tableWidget)
+        self.FPTButton = QPushButton('FPT Operating Range 0 - 5000 rpm')
+        self.FPTButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.FPTButton, 0, 3)
 
-        self.setLayout(mainLayout)
+        self.BOButton = QPushButton('BO')
+        self.BOButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.BOButton, 1, 0)
 
-    def loadCSV(self):
-        self.statusLabel.setText('Loading data...')
-        self.csvFileName, _ = QFileDialog.getOpenFileName(self, 'Open CSV file', '', 'CSV Files (*.csv);;All Files (*)')
-        if self.csvFileName:
-            self.dataLoader = DataLoader(self.csvFileName)
-            self.dataLoader.progress_signal.connect(self.progressBar.setValue)
-            self.dataLoader.df_signal.connect(self.addDFtoTable)
-            self.dataLoader.error_occurred.connect(self.showError)
-            self.dataLoader.start()
+        self.HCFButton = QPushButton('HCF')
+        self.HCFButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.HCFButton, 1, 1)
+
+        self.L10Button = QPushButton('L10')
+        self.L10Button.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.L10Button, 1, 2)
+
+        self.LimitButton = QPushButton('Limit')
+        self.LimitButton.clicked.connect(self.plotData)
+        self.gridLayout.addWidget(self.LimitButton, 1, 3)
+
+        self.excitationLabel = QLabel("Excitation:")
+        self.gridLayout.addWidget(self.excitationLabel, 2, 0)
+
+        self.excitationList = QComboBox()
+        self.excitationList.addItems(["Excitation 1", "Excitation 2", "Excitation 3"])
+        self.gridLayout.addWidget(self.excitationList, 2, 1)
+
+        self.tableWidget = QTableWidget()
+        self.tableWidget.setRowCount(100)
+        self.tableWidget.setColumnCount(3)
+        self.tableWidget.setHorizontalHeaderLabels(["Station Name", "Maximum value", "RPM"])
+
+        for i in range(100):
+            self.tableWidget.setItem(i, 0, QTableWidgetItem(f"Station {i+1}"))
+            self.tableWidget.setItem(i, 1, QTableWidgetItem("[Maximum value]"))
+            self.tableWidget.setItem(i, 2, QTableWidgetItem("[RPM]"))
+
+        self.gridLayout.addWidget(self.tableWidget, 3, 0, 1, 4)
+
+        self.figure = plt.figure(figsize=(10,10))
+        self.canvas = FigureCanvas(self.figure)
+        self.gridLayout.addWidget(self.canvas, 0, 4, 4, 1)
+
+        self.setLayout(self.gridLayout)
+
+    def loadCSV(self, file_name):
+        self.csvFileName = file_name
+        self.dataLoader = DataLoader(self.csvFileName)
+        self.dataLoader.df_signal.connect(self.handleDataFrame)
+        self.dataLoader.error_occurred.connect(self.showError)
+        self.dataLoader.start()
+
+    def handleDataFrame(self, df):
+        self.df = df
+
+    def plotData(self):
+        if hasattr(self, 'df'):
+            self.figure.clear()
+            ax = self.figure.add_subplot(111)
+            ax.plot(self.df['RPM'], self.df['CM-FF DEFL (MIL DA)'])
+            ax.set_xlabel('RPM')
+            ax.set_ylabel('CM-FF DEFL (MIL DA)')
+            self.canvas.draw()
         else:
-            self.statusLabel.setText("No file selected!")
-
-    def addDFtoTable(self, df):
-        if df is None:
-            self.statusLabel.setText('Error occurred while loading data')
-        else:
-            row = self.tableWidget.rowCount()
-            for i in df.index:
-                self.tableWidget.insertRow(row)
-                self.tableWidget.setItem(row, 0, QTableWidgetItem(str(df['RPM'][i])))  # Add items as needed
-                self.tableWidget.setItem(row, 1, QTableWidgetItem(str(df['CM-FF'][i])))
-                self.tableWidget.setItem(row, 2, QTableWidgetItem(str(df['CM-TCF'][i])))
-                self.tableWidget.setItem(row, 3, QTableWidgetItem(str(df['CM-TRF'][i])))
-                row += 1
-            self.statusLabel.setText('Data loading complete!')
+            QMessageBox.critical(self, "Error", "No data loaded")
 
     def showError(self, error_message):
-        error_dialog = QMessageBox()
-        error_dialog.setIcon(QMessageBox.Critical)
-        error_dialog.setWindowTitle("Error occurred!")
-        error_dialog.setText(error_message)
-        error_dialog.exec_()
+        QMessageBox.critical(self, "Error", error_message)
 
 app = QApplication(sys.argv)
 demo = AppDemo()
+demo.loadCSV('data.csv')  # Load your data here
 demo.show()
 sys.exit(app.exec_())
